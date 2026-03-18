@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { searchFiles, readFile, listSheets, readSheet, updateCell, getAccounts, switchAccount } from './gdrive-client.js';
+import { searchFiles, readFile, listSheets, readSheet, getAccounts, switchAccount } from './gdrive-client.js';
 
 const HELP = `
 gdrive-cli — Google Drive & Sheets from the command line using ADC
@@ -15,7 +15,6 @@ Commands:
   sheets <spreadsheetId>                        List all sheets/tabs in a spreadsheet
   sheet <spreadsheetId> [--ranges=A1:B10]       Read spreadsheet data (all tabs by default)
   sheet <spreadsheetId> [--sheet-id=0]          Read specific sheet by ID
-  update <spreadsheetId> <range> <value>        Update a cell value
   help                                          Show this help
 
 Options:
@@ -28,7 +27,6 @@ Examples:
   gdrive-cli sheets 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
   gdrive-cli sheet 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
   gdrive-cli sheet 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms --ranges=Sheet1!A1:D10
-  gdrive-cli update 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms Sheet1!A1 "Hello"
 `.trim();
 
 const args = process.argv.slice(2);
@@ -160,19 +158,6 @@ async function main(): Promise<void> {
             const sheetId = sheetIdFlag ? parseInt(sheetIdFlag, 10) : undefined;
             const data = await readSheet(spreadsheetId, ranges, sheetId);
             formatSheetData(data);
-            break;
-        }
-
-        case 'update': {
-            const spreadsheetId = args[1];
-            const range = args[2];
-            const value = args[3];
-            if (!spreadsheetId || !range || value === undefined) {
-                console.error('Usage: gdrive-cli update <spreadsheetId> <range> <value>');
-                process.exit(1);
-            }
-            const data = await updateCell(spreadsheetId, range, value);
-            if (rawJson) { print(data); } else { console.log(`Updated ${data.range} to: ${data.value}`); }
             break;
         }
 

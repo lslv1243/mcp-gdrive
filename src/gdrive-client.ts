@@ -6,7 +6,7 @@ import os from 'os';
 
 const SCOPES = [
     'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
 ];
 
 const CONFIG_DIR = process.env.GDRIVE_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'mcp-gdrive');
@@ -306,26 +306,3 @@ export async function readSheet(spreadsheetId: string, ranges?: string[], sheetI
     }
 }
 
-export interface UpdateResult {
-    range: string;
-    value: string;
-}
-
-export async function updateCell(spreadsheetId: string, range: string, value: string): Promise<UpdateResult> {
-    await ensureAuth();
-    const sheets = google.sheets('v4');
-
-    try {
-        await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range,
-            valueInputOption: 'RAW',
-            requestBody: { values: [[value]] },
-        });
-
-        return { range, value };
-    } catch (error: any) {
-        if (isPermissionError(error)) throw new Error(permissionErrorMessage(error));
-        throw error;
-    }
-}

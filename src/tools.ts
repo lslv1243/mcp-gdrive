@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { searchFiles, readFile, listSheets, readSheet, updateCell, getAccounts, switchAccount } from './gdrive-client.js';
+import { searchFiles, readFile, listSheets, readSheet, getAccounts, switchAccount } from './gdrive-client.js';
 
 export function registerTools(server: McpServer): void {
     const errorResult = (message: string) => ({
@@ -109,21 +109,4 @@ export function registerTools(server: McpServer): void {
         },
     );
 
-    server.tool(
-        'gsheets_update_cell',
-        'Update a cell value in a Google Spreadsheet. CLI: gdrive-cli update <spreadsheetId> <range> <value>',
-        {
-            spreadsheetId: z.string().describe('ID of the spreadsheet'),
-            range: z.string().describe("Cell range in A1 notation (e.g. 'Sheet1!A1')"),
-            value: z.string().describe('New cell value'),
-        },
-        async ({ spreadsheetId, range, value }) => {
-            try {
-                const data = await updateCell(spreadsheetId, range, value);
-                return jsonResult(data);
-            } catch (e: any) {
-                return errorResult(e.message);
-            }
-        },
-    );
 }
