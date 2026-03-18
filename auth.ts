@@ -2,6 +2,7 @@ import { authenticate } from "@google-cloud/local-auth";
 import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 export const SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
@@ -11,13 +12,13 @@ export const SCOPES = [
 // Get credentials directory from environment variable or use default
 const CREDS_DIR =
   process.env.GDRIVE_CREDS_DIR ||
-  path.join(path.dirname(new URL(import.meta.url).pathname), "../../../");
+  path.join(os.homedir(), ".config", "mcp-gdrive");
 
 
 // Ensure the credentials directory exists
 function ensureCredsDirectory() {
   try {
-    fs.mkdirSync(CREDS_DIR, { recursive: true });
+    fs.mkdirSync(CREDS_DIR, { recursive: true, mode: 0o700 });
     console.error(`Ensured credentials directory exists at: ${CREDS_DIR}`);
   } catch (error) {
     console.error(
@@ -72,7 +73,7 @@ async function authenticateAndSaveCredentials() {
     // Ensure directory exists before saving
     ensureCredsDirectory();
 
-    fs.writeFileSync(credentialsPath, JSON.stringify(credentials, null, 2));
+    fs.writeFileSync(credentialsPath, JSON.stringify(credentials, null, 2), { mode: 0o600 });
     console.error(
       "Credentials saved successfully with refresh token to:",
       credentialsPath,
