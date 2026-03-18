@@ -26,11 +26,7 @@ const server = new Server(
   },
   {
     capabilities: {
-      resources: {
-        schemes: ["gdrive"], // Declare that we handle gdrive:/// URIs
-        listable: true, // Support listing available resources
-        readable: true, // Support reading resource contents
-      },
+      resources: {},
       tools: {},
     },
   },
