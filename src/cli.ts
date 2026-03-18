@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { searchFiles, readFile, listSheets, readSheet, updateCell } from './gdrive-client.js';
+import { searchFiles, readFile, listSheets, readSheet, updateCell, getAccounts, switchAccount } from './gdrive-client.js';
 
 const HELP = `
 gdrive-cli — Google Drive & Sheets from the command line using ADC
@@ -8,6 +8,8 @@ gdrive-cli — Google Drive & Sheets from the command line using ADC
 Usage: gdrive-cli <command> [options]
 
 Commands:
+  accounts                                      List configured accounts
+  account <name>                                Switch active account
   search <query> [--limit=N]                    Search files in Drive
   read <fileId>                                 Read file contents
   sheets <spreadsheetId>                        List all sheets/tabs in a spreadsheet
@@ -88,6 +90,29 @@ async function main(): Promise<void> {
     }
 
     switch (command) {
+        case 'accounts': {
+            const accs = getAccounts();
+            if (rawJson) { print(accs); } else {
+                console.log('Configured accounts:\n');
+                for (const a of accs) {
+                    const marker = a.active ? '* ' : '  ';
+                    console.log(`${marker}${a.name} (${a.file})`);
+                }
+            }
+            break;
+        }
+
+        case 'account': {
+            const name = args[1];
+            if (!name) {
+                console.error('Usage: gdrive-cli account <name>');
+                process.exit(1);
+            }
+            const result = switchAccount(name);
+            if (rawJson) { print(result); } else { console.log(`Switched to account: ${result.name}`); }
+            break;
+        }
+
         case 'search': {
             const query = args.slice(1).filter(a => !a.startsWith('--')).join(' ');
             const limit = parseInt(getFlag('limit') ?? '10', 10);

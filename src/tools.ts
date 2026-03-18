@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { searchFiles, readFile, listSheets, readSheet, updateCell } from './gdrive-client.js';
+import { searchFiles, readFile, listSheets, readSheet, updateCell, getAccounts, switchAccount } from './gdrive-client.js';
 
 export function registerTools(server: McpServer): void {
     const errorResult = (message: string) => ({
@@ -10,6 +10,36 @@ export function registerTools(server: McpServer): void {
     const jsonResult = (data: any) => ({
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
     });
+
+    server.tool(
+        'gdrive_list_accounts',
+        'List configured Google accounts and show which is active. CLI: gdrive-cli accounts',
+        {},
+        async () => {
+            try {
+                const data = getAccounts();
+                return jsonResult(data);
+            } catch (e: any) {
+                return errorResult(e.message);
+            }
+        },
+    );
+
+    server.tool(
+        'gdrive_switch_account',
+        'Switch the active Google account. Use this when you get permission errors. CLI: gdrive-cli account <name>',
+        {
+            name: z.string().describe('Account name to switch to'),
+        },
+        async ({ name }) => {
+            try {
+                const data = switchAccount(name);
+                return jsonResult(data);
+            } catch (e: any) {
+                return errorResult(e.message);
+            }
+        },
+    );
 
     server.tool(
         'gdrive_search',
