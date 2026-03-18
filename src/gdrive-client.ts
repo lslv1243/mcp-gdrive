@@ -100,20 +100,26 @@ export function switchAccount(name: string): AccountInfo {
         throw new Error(`Account "${name}" not found. Available: ${available}`);
     }
     saveActiveAccountName(name);
-    cachedClient = null; // reset cached client
+    cachedClient = null;
+    cachedQuotaProject = undefined;
     return { name: account.name, active: true, file: account.filePath };
 }
 
 // --- Auth ---
 
 let cachedClient: OAuth2Client | null = null;
+let cachedQuotaProject: string | undefined = undefined;
 
 async function ensureAuth(): Promise<void> {
     if (!cachedClient) {
         const account = getActiveAccount();
         cachedClient = createClient(account);
+        cachedQuotaProject = account.credentials.quota_project_id;
     }
-    google.options({ auth: cachedClient });
+    google.options({
+        auth: cachedClient,
+        ...(cachedQuotaProject ? { quotaUser: cachedQuotaProject, headers: { 'x-goog-user-project': cachedQuotaProject } } : {}),
+    });
 }
 
 function isPermissionError(error: any): boolean {
