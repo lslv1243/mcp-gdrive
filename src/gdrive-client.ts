@@ -42,13 +42,33 @@ function loadAccounts(): Account[] {
             return { name, filePath: trimmed, credentials: creds };
         });
     } else {
-        // Default: use standard ADC file
+        const discovered: Account[] = [];
+
+        // Default gcloud ADC
         const defaultPath = path.join(os.homedir(), '.config', 'gcloud', 'application_default_credentials.json');
-        if (!fs.existsSync(defaultPath)) {
+        if (fs.existsSync(defaultPath)) {
+            const creds: ADCCredentials = JSON.parse(fs.readFileSync(defaultPath, 'utf-8'));
+            discovered.push({ name: 'default', filePath: defaultPath, credentials: creds });
+        }
+
+        // Named credentials in config dir
+        const credDir = path.join(CONFIG_DIR, 'credentials');
+        if (fs.existsSync(credDir)) {
+            for (const file of fs.readdirSync(credDir)) {
+                if (file.endsWith('.json')) {
+                    const filePath = path.join(credDir, file);
+                    const creds: ADCCredentials = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                    const name = path.basename(file, '.json');
+                    discovered.push({ name, filePath, credentials: creds });
+                }
+            }
+        }
+
+        if (discovered.length === 0) {
             throw new Error('No ADC credentials found. Run: gcloud auth application-default login');
         }
-        const creds: ADCCredentials = JSON.parse(fs.readFileSync(defaultPath, 'utf-8'));
-        accounts = [{ name: 'default', filePath: defaultPath, credentials: creds }];
+
+        accounts = discovered;
     }
 
     return accounts;

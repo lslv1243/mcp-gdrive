@@ -38,6 +38,22 @@ function getFlag(name: string): string | undefined {
     return flag?.split('=')[1];
 }
 
+function parseGoogleUrl(input: string): { id: string; sheetId?: number } {
+    try {
+        const url = new URL(input);
+        const sheetsMatch = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
+        if (sheetsMatch) {
+            const gid = url.searchParams.get('gid');
+            return { id: sheetsMatch[1], sheetId: gid ? parseInt(gid, 10) : undefined };
+        }
+        const docsMatch = url.pathname.match(/\/d\/([^/]+)/);
+        if (docsMatch) return { id: docsMatch[1] };
+    } catch {
+        // Not a URL — treat as raw ID
+    }
+    return { id: input };
+}
+
 function print(data: any): void {
     console.log(JSON.stringify(data, null, 2));
 }
@@ -120,22 +136,24 @@ async function main(): Promise<void> {
         }
 
         case 'read': {
-            const fileId = args[1];
-            if (!fileId) {
-                console.error('Usage: gdrive-cli read <fileId>');
+            const rawFileId = args[1];
+            if (!rawFileId) {
+                console.error('Usage: gdrive-cli read <fileId|url>');
                 process.exit(1);
             }
+            const { id: fileId } = parseGoogleUrl(rawFileId);
             const data = await readFile(fileId);
             formatFileContent(data);
             break;
         }
 
         case 'sheets': {
-            const spreadsheetId = args[1];
-            if (!spreadsheetId) {
-                console.error('Usage: gdrive-cli sheets <spreadsheetId>');
+            const rawSheetsId = args[1];
+            if (!rawSheetsId) {
+                console.error('Usage: gdrive-cli sheets <spreadsheetId|url>');
                 process.exit(1);
             }
+            const { id: spreadsheetId } = parseGoogleUrl(rawSheetsId);
             const info = await listSheets(spreadsheetId);
             if (rawJson) { print(info); } else {
                 console.log(`Spreadsheet: ${info.title}\n`);
@@ -147,16 +165,17 @@ async function main(): Promise<void> {
         }
 
         case 'sheet': {
-            const spreadsheetId = args[1];
-            if (!spreadsheetId) {
-                console.error('Usage: gdrive-cli sheet <spreadsheetId> [--ranges=...] [--sheet-id=...]');
+            const rawSheetId = args[1];
+            if (!rawSheetId) {
+                console.error('Usage: gdrive-cli sheet <spreadsheetId|url> [--ranges=...] [--sheet-id=...]');
                 process.exit(1);
             }
+            const parsed = parseGoogleUrl(rawSheetId);
             const rangesFlag = getFlag('ranges');
             const sheetIdFlag = getFlag('sheet-id');
             const ranges = rangesFlag ? rangesFlag.split(',') : undefined;
-            const sheetId = sheetIdFlag ? parseInt(sheetIdFlag, 10) : undefined;
-            const data = await readSheet(spreadsheetId, ranges, sheetId);
+            const sheetId = sheetIdFlag ? parseInt(sheetIdFlag, 10) : parsed.sheetId;
+            const data = await readSheet(parsed.id, ranges, sheetId);
             formatSheetData(data);
             break;
         }
