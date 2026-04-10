@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import * as XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -191,6 +192,8 @@ export async function searchFiles(query: string, pageSize = 10, pageToken?: stri
             pageToken,
             orderBy: 'modifiedTime desc',
             fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
         });
 
         return {
@@ -220,34 +223,37 @@ export async function readFile(fileId: string): Promise<FileContent> {
     const drive = google.drive('v3');
 
     try {
-        const file = await drive.files.get({ fileId, fields: 'mimeType,name' });
+        const file = await drive.files.get({ fileId, fields: 'mimeType,name', supportsAllDrives: true });
         const name = file.data.name ?? fileId;
         const mimeType = file.data.mimeType ?? 'application/octet-stream';
 
-        // Export mappings for Google Apps native types
-        const googleAppsExportMap: Record<string, string> = {
-            'application/vnd.google-apps.document': 'text/markdown',
-            'application/vnd.google-apps.spreadsheet': 'text/csv',
-            'application/vnd.google-apps.presentation': 'text/plain',
-        };
-
-        // Export mappings for uploaded Office formats
-        const officeExportMap: Record<string, string> = {
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'text/csv',
-            'application/vnd.ms-excel': 'text/csv',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'text/plain',
-        };
-
-        const exportMimeType = mimeType.startsWith('application/vnd.google-apps')
-            ? (googleAppsExportMap[mimeType] ?? 'text/plain')
-            : officeExportMap[mimeType];
-
-        if (exportMimeType) {
+        // Native Google Apps types: use files.export
+        if (mimeType.startsWith('application/vnd.google-apps')) {
+            const googleAppsExportMap: Record<string, string> = {
+                'application/vnd.google-apps.document': 'text/markdown',
+                'application/vnd.google-apps.spreadsheet': 'text/csv',
+                'application/vnd.google-apps.presentation': 'text/plain',
+            };
+            const exportMimeType = googleAppsExportMap[mimeType] ?? 'text/plain';
             const res = await drive.files.export({ fileId, mimeType: exportMimeType }, { responseType: 'text' });
             return { name, mimeType: exportMimeType, text: res.data as string };
         }
 
-        const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+        // Uploaded Office spreadsheets: download binary and parse with xlsx
+        const officeSpreadsheetTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+        ];
+        if (officeSpreadsheetTypes.includes(mimeType)) {
+            const res = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+            const workbook = XLSX.read(Buffer.from(res.data as ArrayBuffer));
+            const csvParts = workbook.SheetNames.map(sheetName =>
+                XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])
+            );
+            return { name, mimeType: 'text/csv', text: csvParts.join('\n') };
+        }
+
+        const res = await drive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
         const content = Buffer.from(res.data as ArrayBuffer);
         const isText = mimeType.startsWith('text/') || mimeType === 'application/json';
 
@@ -273,7 +279,7 @@ const NATIVE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
 
 async function getFileMimeType(fileId: string): Promise<{ name: string; mimeType: string }> {
     const drive = google.drive('v3');
-    const file = await drive.files.get({ fileId, fields: 'name,mimeType' });
+    const file = await drive.files.get({ fileId, fields: 'name,mimeType', supportsAllDrives: true });
     return { name: file.data.name ?? fileId, mimeType: file.data.mimeType ?? 'application/octet-stream' };
 }
 
