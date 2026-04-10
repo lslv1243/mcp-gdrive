@@ -224,15 +224,25 @@ export async function readFile(fileId: string): Promise<FileContent> {
         const name = file.data.name ?? fileId;
         const mimeType = file.data.mimeType ?? 'application/octet-stream';
 
-        if (mimeType.startsWith('application/vnd.google-apps')) {
-            let exportMimeType: string;
-            switch (mimeType) {
-                case 'application/vnd.google-apps.document': exportMimeType = 'text/markdown'; break;
-                case 'application/vnd.google-apps.spreadsheet': exportMimeType = 'text/csv'; break;
-                case 'application/vnd.google-apps.presentation': exportMimeType = 'text/plain'; break;
-                default: exportMimeType = 'text/plain';
-            }
+        // Export mappings for Google Apps native types
+        const googleAppsExportMap: Record<string, string> = {
+            'application/vnd.google-apps.document': 'text/markdown',
+            'application/vnd.google-apps.spreadsheet': 'text/csv',
+            'application/vnd.google-apps.presentation': 'text/plain',
+        };
 
+        // Export mappings for uploaded Office formats
+        const officeExportMap: Record<string, string> = {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'text/csv',
+            'application/vnd.ms-excel': 'text/csv',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'text/plain',
+        };
+
+        const exportMimeType = mimeType.startsWith('application/vnd.google-apps')
+            ? (googleAppsExportMap[mimeType] ?? 'text/plain')
+            : officeExportMap[mimeType];
+
+        if (exportMimeType) {
             const res = await drive.files.export({ fileId, mimeType: exportMimeType }, { responseType: 'text' });
             return { name, mimeType: exportMimeType, text: res.data as string };
         }
@@ -259,11 +269,27 @@ export interface SheetInfo {
     columnCount: number;
 }
 
+const NATIVE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
+
+async function getFileMimeType(fileId: string): Promise<{ name: string; mimeType: string }> {
+    const drive = google.drive('v3');
+    const file = await drive.files.get({ fileId, fields: 'name,mimeType' });
+    return { name: file.data.name ?? fileId, mimeType: file.data.mimeType ?? 'application/octet-stream' };
+}
+
 export async function listSheets(spreadsheetId: string): Promise<{ title: string; sheets: SheetInfo[] }> {
     await ensureAuth();
-    const sheets = google.sheets('v4');
 
     try {
+        const { name, mimeType } = await getFileMimeType(spreadsheetId);
+        if (mimeType !== NATIVE_SHEET_MIME) {
+            return {
+                title: name,
+                sheets: [{ sheetId: 0, title: 'Sheet1 (exported CSV)', rowCount: 0, columnCount: 0 }],
+            };
+        }
+
+        const sheets = google.sheets('v4');
         const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: 'properties.title,sheets.properties' });
 
         return {
@@ -288,11 +314,61 @@ export interface SheetData {
     totalRows: number;
 }
 
+function parseCsvToSheetData(csv: string, name: string): SheetData[] {
+    const lines = csv.split('\n').filter(line => line.trim().length > 0);
+    if (lines.length === 0) return [];
+
+    // Simple CSV parse: split on commas, respecting quoted fields
+    function parseCsvLine(line: string): string[] {
+        const cells: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (inQuotes) {
+                if (char === '"' && line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                } else if (char === '"') {
+                    inQuotes = false;
+                } else {
+                    current += char;
+                }
+            } else if (char === '"') {
+                inQuotes = true;
+            } else if (char === ',') {
+                cells.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        cells.push(current);
+        return cells;
+    }
+
+    const headers = parseCsvLine(lines[0]);
+    const rows = lines.slice(1).map(line =>
+        parseCsvLine(line).map((cell, i) => ({ [headers[i] ?? `col_${i}`]: cell }))
+    );
+
+    return [{ sheetName: name, headers, rows, totalRows: lines.length }];
+}
+
 export async function readSheet(spreadsheetId: string, ranges?: string[], sheetId?: number): Promise<SheetData[]> {
     await ensureAuth();
-    const sheets = google.sheets('v4');
 
     try {
+        const { name, mimeType } = await getFileMimeType(spreadsheetId);
+
+        // Non-native spreadsheet: export as CSV via readFile()
+        if (mimeType !== NATIVE_SHEET_MIME) {
+            const content = await readFile(spreadsheetId);
+            if (!content.text) throw new Error(`Cannot read spreadsheet data from "${name}" (${mimeType})`);
+            return parseCsvToSheetData(content.text, name);
+        }
+
+        const sheets = google.sheets('v4');
         let response;
 
         if (ranges) {
