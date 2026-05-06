@@ -97,6 +97,17 @@ function formatSheetData(data: Awaited<ReturnType<typeof readSheet>>): void {
     }
 }
 
+function printAccounts(footer?: string): void {
+    const accs = getAccounts();
+    if (rawJson) { print(accs); return; }
+    console.log('Configured accounts:\n');
+    for (const a of accs) {
+        const marker = a.active ? '* ' : '  ';
+        console.log(`${marker}${a.name} (${a.file})`);
+    }
+    if (footer) console.log(`\n${footer}`);
+}
+
 async function main(): Promise<void> {
     if (!command || command === 'help' || command === '--help') {
         console.log(HELP);
@@ -105,22 +116,15 @@ async function main(): Promise<void> {
 
     switch (command) {
         case 'accounts': {
-            const accs = getAccounts();
-            if (rawJson) { print(accs); } else {
-                console.log('Configured accounts:\n');
-                for (const a of accs) {
-                    const marker = a.active ? '* ' : '  ';
-                    console.log(`${marker}${a.name} (${a.file})`);
-                }
-            }
+            printAccounts();
             break;
         }
 
         case 'account': {
             const name = args[1];
             if (!name) {
-                console.error('Usage: gdrive-cli account <name>');
-                process.exit(1);
+                printAccounts('Usage: gdrive-cli account <name>');
+                break;
             }
             const result = switchAccount(name);
             if (rawJson) { print(result); } else { console.log(`Switched to account: ${result.name}`); }
